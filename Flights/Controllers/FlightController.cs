@@ -1,7 +1,10 @@
 ﻿using Flights.ReadModels;
+using Flights.Domain.Entities;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using Flights.DTOs;
+using Flights.Domain.Errors;
+using Flights.Data;
 
 namespace Flights.Controllers
 {
@@ -12,68 +15,15 @@ namespace Flights.Controllers
 
         private readonly ILogger<FlightController> _logger;
 
+        private readonly Entities _entities;
 
-        static Random random = new Random();
 
 
-        static private FlightRm[] flights = new FlightRm[]
-
-                    {
-                new (   Guid.NewGuid(),
-                "American Airlines",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Los Angeles",DateTime.Now.AddHours(random.Next(1, 3))),
-                new TimePlaceRm("Istanbul",DateTime.Now.AddHours(random.Next(4, 10))),
-                    random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "Deutsche BA",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Munchen",DateTime.Now.AddHours(random.Next(1, 10))),
-                new TimePlaceRm("Schiphol",DateTime.Now.AddHours(random.Next(4, 15))),
-                random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "British Airways",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("London, England",DateTime.Now.AddHours(random.Next(1, 15))),
-                new TimePlaceRm("Vizzola-Ticino",DateTime.Now.AddHours(random.Next(4, 18))),
-                    random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "Basiq Air",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Amsterdam",DateTime.Now.AddHours(random.Next(1, 21))),
-                new TimePlaceRm("Glasgow, Scotland",DateTime.Now.AddHours(random.Next(4, 21))),
-                    random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "BB Heliag",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Zurich",DateTime.Now.AddHours(random.Next(1, 23))),
-                new TimePlaceRm("Baku",DateTime.Now.AddHours(random.Next(4, 25))),
-                    random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "Adria Airways",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Ljubljana",DateTime.Now.AddHours(random.Next(1, 15))),
-                new TimePlaceRm("Warsaw",DateTime.Now.AddHours(random.Next(4, 19))),
-                    random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "ABA Air",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Praha Ruzyne",DateTime.Now.AddHours(random.Next(1, 55))),
-                new TimePlaceRm("Paris",DateTime.Now.AddHours(random.Next(4, 58))),
-                    random.Next(1, 853)),
-        new (   Guid.NewGuid(),
-                "AB Corporate Aviation",
-                random.Next(90, 5000).ToString(),
-                new TimePlaceRm("Le Bourget",DateTime.Now.AddHours(random.Next(1, 58))),
-                new TimePlaceRm("Zagreb",DateTime.Now.AddHours(random.Next(4, 60))),
-                    random.Next(1, 853))
-            };
-
-        static private IList<BookDto> Bookings = new List<BookDto>();
-
-        public FlightController(ILogger<FlightController> logger)
+        public FlightController(ILogger<FlightController> logger, 
+            Entities entities)
         {
             _logger = logger;
+            _entities = entities;
         }
 
 
@@ -82,7 +32,18 @@ namespace Flights.Controllers
         [ProducesResponseType(500)] // server failure
         [ProducesResponseType(typeof(IEnumerable<FlightRm>), 200)] // successful request
         public IEnumerable<FlightRm> Search()
-            => flights;
+        {
+            var flightRmList = _entities.Flights.Select(flight => new FlightRm(
+                flight.Id,
+                flight.Airline,
+                flight.Price,
+                new TimePlaceRm(flight.Departure.Place.ToString(), flight.Departure.Time),
+                new TimePlaceRm(flight.Departure.Place.ToString(), flight.Arrival.Time),
+                flight.RemainingNumberOfSeats
+                ));
+
+            return flightRmList;
+        }
 
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(400)] // bad request
@@ -91,10 +52,19 @@ namespace Flights.Controllers
         [HttpGet("{id}")]
         public ActionResult<FlightRm> Find(Guid id)
         {
-            var flight = flights.SingleOrDefault(f => f.Id == id);
+            var flight = _entities.Flights.SingleOrDefault(f => f.Id == id);
             if (flight == null)
                 return NotFound();
-            return Ok(flight);
+
+            var readModel = new FlightRm(
+                flight.Id,
+                flight.Airline,
+                flight.Price,
+                new TimePlaceRm(flight.Departure.Place.ToString(), flight.Departure.Time),
+                new TimePlaceRm(flight.Departure.Place.ToString(), flight.Arrival.Time),
+                flight.RemainingNumberOfSeats
+                ); 
+            return Ok(readModel);
         }
 
         [HttpPost]
@@ -106,11 +76,15 @@ namespace Flights.Controllers
         {
             System.Diagnostics.Debug.WriteLine($"Booking a new flight {dto.FlightId}");
 
-            var flightFound = flights.Any(f => f.Id == dto.FlightId);
+            var flight = _entities.Flights.SingleOrDefault(f => f.Id == dto.FlightId);
 
-            if(flightFound == false) return NotFound();
+            if (flight == null) return NotFound();
 
-            Bookings.Add(dto);
+            var error = flight.MakeBooking(dto.PassengerEmail, dto.NumberOfSeats);
+
+            if (error is OverbookError)
+                return Conflict(new { message = "Not enough seats." });
+
             return CreatedAtAction(nameof(Find), new { id = dto.FlightId });
         }
         
