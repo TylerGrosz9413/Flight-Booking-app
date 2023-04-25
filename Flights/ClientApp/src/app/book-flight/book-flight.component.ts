@@ -28,8 +28,6 @@ export class BookFlightComponent implements OnInit {
 
   ngOnInit(): void {
 
-    if (!this.authService.currentUser)
-      this.router.navigate(['/register-passenger'])
 
     this.route.paramMap
     .subscribe(p => this.findFlight(p.get("flightId")))
@@ -70,7 +68,7 @@ export class BookFlightComponent implements OnInit {
     const booking: BookDto = {
       flightId: this.flight.id,
       passengerEmail: this.authService.currentUser?.email,
-      numberOfSeats: this.form.get('number')?.value
+      numberOfSeats: this.form.get('number')?.value!
     }
 
     this.flightService.bookFlight({ body: booking })

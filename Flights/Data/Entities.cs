@@ -1,15 +1,34 @@
 ﻿using Flights.Domain.Entities;
 using System;
+using Microsoft.EntityFrameworkCore;
 
 namespace Flights.Data
 {
-    public class Entities
+    public class Entities : DbContext
     {
-        public IList<Passenger> Passengers = new List<Passenger>();
+        public DbSet<Passenger> Passengers => Set<Passenger>();
 
         static Random random = new Random();
 
-        public List<Flight> Flights = new List<Flight>();
+        public DbSet<Flight> Flights => Set<Flight>();
+
+        public Entities(DbContextOptions<Entities> options) : base(options)
+        {
+            
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<Passenger>().HasKey(p => p.Email);
+            // code for 'race condition'
+            modelBuilder.Entity<Flight>().Property(p => p.RemainingNumberOfSeats)
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<Flight>().OwnsOne(f => f.Departure);
+            modelBuilder.Entity<Flight>().OwnsOne(f => f.Arrival);
+        }
 
     }
 }
+
+
